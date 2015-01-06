@@ -1,0 +1,22 @@
+[Eagle]
+Version="07 02 00"
+Platform="Linux"
+Serial="62191E841E-LSR-WLM-1EL"
+Globals="Globals"
+Desktop="Desktop"
+
+[Globals]
+AutoSaveProject=1
+UsedLibrary="/home/dgarrett/lib/eagle/core/Libraries/Spark.lbr"
+UsedLibrary="/home/dgarrett/lib/eagle/www.8bitu.cz/relays.lbr"
+UsedLibrary="/home/dgarrett/lib/eagle/SparkFun-Eagle-Libraries/SparkFun-Connectors.lbr"
+
+[Win_1]
+Type="Control Panel"
+Loc="34 136 1264 930"
+State=2
+Number=0
+
+[Desktop]
+Screen="1920 1200"
+Window="Win_1"
