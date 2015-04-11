@@ -1,5 +1,6 @@
 #include<application.h>
 #include "strip.h"
+#include "math.h"
 
 Color BLACK  = {0x00, 0x00, 0x00};
 Color WHITE  = {0x7F, 0x7F, 0x7F};
@@ -7,6 +8,7 @@ Color RED    = {0x7F, 0x00, 0x00};
 Color GREEN  = {0x00, 0x7F, 0x00};
 Color BLUE   = {0x00, 0x00, 0x7F};
 Color YELLOW = {0x7F, 0x7F, 0x00};
+Color SIGN   = {0x5F, 0x5F, 0x5F};
 
 // Because these values include the high bit, they are not in the valid color space.
 Color RANDOM         = {0x80, 0x80, 0x80};
@@ -66,6 +68,28 @@ Color mix_color(Color left, Color right, float ratio) {
 Color dim_color(Color color, float brightness) {
     return mix_color(BLACK, color, brightness);
 }
+
+uint8_t morph_shade(uint8_t base, uint8_t target) {
+    if (base < target)
+        base++;
+
+    if (base > target)
+        base--;
+
+    return base;
+}
+
+// This has no rounding errors if you want to slowly/smoothly move from color a to b.
+Color morph_color(Color base, Color target) {
+    Color result;
+
+    result.red = morph_shade(base.red, target.red);
+    result.green = morph_shade(base.green, target.green);
+    result.blue = morph_shade(base.blue, target.blue);
+
+    return result;
+}
+
 
 // This will pick truely random red/green/blue components.
 // This will tend more towards dirty/dim white than you would expect.
@@ -264,6 +288,82 @@ unsigned long handle_flicker(bool initial, Color a, Color b, unsigned long speed
     return 10;
 }
 
+unsigned long handle_lava(bool initial, Color a, Color b, unsigned long speed) {
+
+    typedef struct {
+        int pos;
+        int size;
+        int duration;
+        Color color;
+    } Blob;
+
+    static const int blobs = 3;
+    static Blob blob[blobs];
+    static Color *strip = NULL;
+
+    // Intialize all of our blobs to be off screen (so to speak).
+    if (initial) {
+        if (!strip) {
+            strip = (Color *)malloc(sizeof(Color) * _pixels);
+        }
+
+        // Initialize the strip.
+        for (int i = 0; i < _pixels; i++) {
+            strip[i] = BLACK;
+        }
+
+        // Initialize the blobs to not exist.
+        for (int b = 0; b < blobs; b++) {
+            blob[b].pos = -1;
+        }
+    }
+
+    // Mutate our blobs.
+    for (Blob *b = blob; b < (blob + blobs); b++) {
+
+        b->duration--;
+
+        // If it's not currently displayed.
+        if (b->pos == -1) {
+            if (b->duration <= 0) {
+                b->pos = random(_pixels);
+                b->size = _pixels - log(random(exp(_pixels)));
+                b->duration = random(speed);
+                b->color = expand_random(a);
+            }
+        } else {
+            if (b->duration <= 0) {
+                b->pos = -1;
+                b->duration = random(speed);
+            }
+        }
+    }
+
+    // Apply background to strip.
+    Color background = expand_random(b);
+    for (int i = 0; i < _pixels; i++) {
+        strip[i] = morph_color(strip[i], background);
+    }
+
+    // Apply blobs to strip.
+    for (Blob *b = blob; b < (blob + blobs); b++) {
+        if (b->pos == -1)
+            continue;
+
+        for (int i = (b->pos - b->size); i <= (b->pos + b->size); i++) {
+            int offset = i % _pixels;
+            strip[offset] = morph_color(strip[offset], b->color);
+        }
+    }
+
+    // This draws our strip.
+    for (int i = 0; i < _pixels; i++) {
+        draw_pixel(strip[i]);
+    }
+    issue_latch();
+
+    return 10;
+}
 
 //
 // Public Methods
@@ -296,9 +396,7 @@ void strip_pattern(Pattern pattern, Color a, Color b, int speed) {
     _next_draw = 0;
 }
 
-void strip_update() {
-    unsigned long now = millis();
-
+void strip_update(unsigned long now) {
     bool initial = _next_draw == 0;
 
     if (initial) {
@@ -325,5 +423,31 @@ void strip_update() {
         case FLICKER:
             _next_draw += handle_flicker(initial, _color_a, _color_b, _speed);
             break;
+        case LAVA:
+            _next_draw += handle_lava(initial, _color_a, _color_b, _speed);
+            break;
+        default:
+            break;
     }
+}
+
+// Returns "0xFFFFFF"
+String color_to_string(Color color) {
+    uint8_t value = color.red << 16 | color.green << 8 | color.blue;
+
+    return String("0x") + String(value, HEX);
+}
+
+String strip_get_pattern_text() {
+    char *patternMap[] = {"SOLID", "PULSE", "CYLON", "ALTERNATE", "FLICKER", "LAVA"};
+
+    // <PATTERN>,0xFFFFFF,0xFFFFFF,55
+    return (String(patternMap[_pattern]) + ',' +
+            color_to_string(_color_a) + ',' +
+            color_to_string(_color_b) + ',' +
+            _speed);
+}
+
+int strip_set_pattern_text(String text) {
+    return -1;
 }

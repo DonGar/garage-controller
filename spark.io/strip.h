@@ -12,6 +12,7 @@ extern Color RED;
 extern Color GREEN;
 extern Color BLUE;
 extern Color YELLOW;
+extern Color SIGN;
 
 // These special colors will be converted to a random value by most patterns.
 extern Color RANDOM;
@@ -23,8 +24,12 @@ typedef enum {
     CYLON,
     ALTERNATE,
     FLICKER,
+    LAVA
 } Pattern;
 
 void strip_init(int pixels);
 void strip_pattern(Pattern pattern, Color a, Color b, int speed);
-void strip_update();
+void strip_update(unsigned long now);
+
+String strip_get_pattern_text();
+int strip_set_pattern_text(String text);
