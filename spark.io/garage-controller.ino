@@ -1,3 +1,4 @@
+
 // This #include statement was automatically added by the Spark IDE.
 #include "strip.h"
 
@@ -9,7 +10,8 @@ const int BUTTON_SENSOR = D1;
 const int DOOR_SENSOR = D2;
 const int DOOR_CONTROL = D7;
 
-const unsigned long CONTROL_DELAY = 400;
+const unsigned long BUTTON_DELAY = 50;
+const unsigned long CONTROL_DELAY = 200;
 const unsigned long DOOR_MOTION_DELAY = 20 * 1000;
 
 typedef enum {
@@ -29,11 +31,10 @@ String FuzzyBooleanJson(int value) {
     }
 }
 
-static bool buttonPushed = false;
-static unsigned long controlTimeout = 0;
+static unsigned long doorControlTimeout = 0;
 static unsigned long doorMotionTimeout = 0;
-static FuzzyBoolean doorState = KNOWN_FALSE; // Reset in Setup.
-static FuzzyBoolean doorTarget = KNOWN_FALSE; // Reset in Setup.
+static FuzzyBoolean doorState = UNKNOWN; // Reset in Setup.
+static FuzzyBoolean doorTarget = UNKNOWN; // Reset in Setup.
 
 void setup() {
     strip_init(PIXELS);
@@ -47,16 +48,16 @@ void setup() {
     pinMode(DOOR_SENSOR, INPUT_PULLDOWN);
     pinMode(DOOR_CONTROL, OUTPUT);
 
-    digitalWrite(BUTTON_BACKLIGHT, true);
+    digitalWrite(BUTTON_BACKLIGHT, false);
     digitalWrite(DOOR_CONTROL, false);
 
-    update_door_state(UNKNOWN);
-    update_door_target(UNKNOWN);
+    publishDoorState(UNKNOWN);
+    publishDoorTarget(UNKNOWN);
 
-    Spark.publish("strip", strip_get_pattern_text(), 60, PRIVATE);
+    refresh("");
 
     Spark.function("refresh", refresh);
-    Spark.function("door_target", door_open_target);
+    Spark.function("door_target", doorOpenTarget);
     Spark.function("strip_target", strip_set_pattern_text);
 }
 
@@ -67,7 +68,7 @@ int refresh(String text) {
     return 0;
 }
 
-void update_door_state(int newState) {
+void publishDoorState(int newState) {
     if (newState == doorState) {
         return;
     }
@@ -80,7 +81,7 @@ void update_door_state(int newState) {
     Spark.publish("door_open", FuzzyBooleanJson(doorState), 60, PRIVATE);
 }
 
-void update_door_target(int newTarget) {
+void publishDoorTarget(int newTarget) {
     if (newTarget == doorTarget) {
         return;
     }
@@ -89,46 +90,55 @@ void update_door_target(int newTarget) {
     Spark.publish("door_open_target", FuzzyBooleanJson(doorTarget), 60, PRIVATE);
 }
 
-void start_door_motion(unsigned long now) {
+void startDoorMotion(unsigned long now) {
     digitalWrite(DOOR_CONTROL, true);
-    controlTimeout = now + CONTROL_DELAY;
+    doorControlTimeout = now + CONTROL_DELAY;
 
     doorMotionTimeout = now + DOOR_MOTION_DELAY;
-    update_door_state(UNKNOWN);
+    publishDoorState(UNKNOWN);
 }
 
-void handle_garage_door_button(unsigned long now) {
-    if (controlTimeout && now >= controlTimeout) {
+void handleDoorControl(unsigned long now) {
+    if (doorControlTimeout && now >= doorControlTimeout) {
         digitalWrite(DOOR_CONTROL, false);
-        controlTimeout = 0;
+        doorControlTimeout = 0;
     }
+}
+
+void handleGarageDoorButton(unsigned long now) {
+    static unsigned long doorButtonDown = 0;
+    static bool doorButtonPushed = false;
 
     // Is the Garage Door button pushed?
     bool newPushed = digitalRead(BUTTON_SENSOR);
-    if (newPushed != buttonPushed) {
-        // Publish Event
-        buttonPushed = newPushed;
 
-        if (buttonPushed) {
-            start_door_motion(now);
-            Spark.publish("door_button", NULL, 60, PRIVATE);
+    if (newPushed) {
+        if (doorButtonPushed) {
+            if (doorButtonDown && (now >= (doorButtonDown + BUTTON_DELAY))) {
+                doorButtonDown = 0;
+                startDoorMotion(now);
+                Spark.publish("door_button", NULL, 60, PRIVATE);
+            }
+        } else {
+            doorButtonDown = now;
         }
     }
+
+    doorButtonPushed = newPushed;
 }
 
-void read_door_sensor(unsigned long now) {
+void readDoorSensor(unsigned long now) {
     if (now >= doorMotionTimeout) {
         doorMotionTimeout = 0;
     }
 
     if (doorMotionTimeout == 0) {
         // Is the Garage Door open?
-        update_door_state(digitalRead(DOOR_SENSOR) ? KNOWN_FALSE : KNOWN_TRUE);
+        publishDoorState(digitalRead(DOOR_SENSOR) ? KNOWN_FALSE : KNOWN_TRUE);
     }
-
 }
 
-void handle_door_to_target(unsigned long now) {
+void handleDoorToTarget(unsigned long now) {
     // If we have no target, or the door state is currently uknown, wait.
     if ((doorTarget == UNKNOWN) || (doorState == UNKNOWN)) {
         return;
@@ -137,27 +147,27 @@ void handle_door_to_target(unsigned long now) {
     // If we are already at the target, nothing to do.
     if (doorState != doorTarget) {
         // Toggle the state to what we want.
-        start_door_motion(now);
+        startDoorMotion(now);
     }
 
     // We clear the target so we don't keep trying.
     doorTarget = UNKNOWN;
 }
 
-int door_open_target(String args) {
+int doorOpenTarget(String args) {
     if (args == "true") {
-        update_door_target(KNOWN_TRUE);
+        publishDoorTarget(KNOWN_TRUE);
         return 0;
     } else if (args == "false") {
-        update_door_target(KNOWN_FALSE);
+        publishDoorTarget(KNOWN_FALSE);
         return 0;
     } else if (args == "toggle") {
         if (doorState != UNKNOWN) {
-            update_door_target(!doorState);
+            publishDoorTarget(!doorState);
             return 0;
         }
         if (doorTarget != UNKNOWN) {
-            update_door_target(!doorTarget);
+            publishDoorTarget(!doorTarget);
             return 0;
         }
 
@@ -170,10 +180,11 @@ int door_open_target(String args) {
 void loop() {
     unsigned long now = millis();
 
-    read_door_sensor(now);
-    handle_garage_door_button(now);
+    readDoorSensor(now);
+    handleDoorControl(now);
+    handleGarageDoorButton(now);
 
-    handle_door_to_target(now);
+    handleDoorToTarget(now);
 
     strip_update(now);
 }
