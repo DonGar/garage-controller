@@ -1,9 +1,14 @@
-
 // This #include statement was automatically added by the Spark IDE.
-#include "strip.h"
+#include "spark-strip/spark-strip.h"
 
+#define SIGN (Color{0x00, 0x5F, 0x5F, 0x5F})
 
 const int PIXELS = 6;
+
+// LPD8806 Strip with 26 LEDs
+DigitalStrip stripRgb = DigitalStrip(PIXELS);
+Pattern stripPattern = Pattern(&stripRgb);
+
 
 const int BUTTON_BACKLIGHT = D0;
 const int BUTTON_SENSOR = D1;
@@ -20,25 +25,13 @@ typedef enum {
     UNKNOWN = 2,
 } FuzzyBoolean;
 
-String FuzzyBooleanJson(int value) {
-    switch ((FuzzyBoolean)value) {
-        case KNOWN_FALSE:
-            return "false";
-        case KNOWN_TRUE:
-            return "true";
-        default:
-            return "null";
-    }
-}
-
 static unsigned long doorControlTimeout = 0;
 static unsigned long doorMotionTimeout = 0;
 static FuzzyBoolean doorState = UNKNOWN; // Reset in Setup.
 static FuzzyBoolean doorTarget = UNKNOWN; // Reset in Setup.
 
 void setup() {
-    strip_init(PIXELS);
-    strip_pattern(SOLID, SIGN, BLACK, 1000);
+    stripPattern.setPattern(SOLID, SIGN, BLACK, 1000);
 
     // Init random number generator by reading from an unconnected pin.
     randomSeed(analogRead(A0));
@@ -52,19 +45,17 @@ void setup() {
     digitalWrite(DOOR_CONTROL, false);
 
     publishDoorState(UNKNOWN);
-    publishDoorTarget(UNKNOWN);
 
     refresh("");
 
     Spark.function("refresh", refresh);
     Spark.function("door_target", doorOpenTarget);
-    Spark.function("strip_target", strip_set_pattern_text);
+    Spark.function("strip_target", setStripPattern);
 }
 
 int refresh(String text) {
-    Spark.publish("door_open", FuzzyBooleanJson(doorState), 60, PRIVATE);
-    Spark.publish("door_open_target", FuzzyBooleanJson(doorTarget), 60, PRIVATE);
-    Spark.publish("strip", strip_get_pattern_text(), 60, PRIVATE);
+    Spark.publish("door", DoorStateString(doorState), 60, PRIVATE);
+    Spark.publish("strip", stripPattern.getText(), 60, PRIVATE);
     return 0;
 }
 
@@ -78,16 +69,13 @@ void publishDoorState(int newState) {
     // The backlight is on if we are open or closed, but not moving.
     digitalWrite(BUTTON_BACKLIGHT,
                  (doorState == KNOWN_TRUE) || (doorState == KNOWN_FALSE));
-    Spark.publish("door_open", FuzzyBooleanJson(doorState), 60, PRIVATE);
+    Spark.publish("door", DoorStateString(doorState), 60, PRIVATE);
 }
 
-void publishDoorTarget(int newTarget) {
-    if (newTarget == doorTarget) {
-        return;
-    }
-
-    doorTarget = (FuzzyBoolean)newTarget;
-    Spark.publish("door_open_target", FuzzyBooleanJson(doorTarget), 60, PRIVATE);
+int setStripPattern(String text) {
+  int result = stripPattern.setText(text);
+  Spark.publish("strip", stripPattern.getText(), 60, PRIVATE);
+  return result;
 }
 
 void startDoorMotion(unsigned long now) {
@@ -154,20 +142,31 @@ void handleDoorToTarget(unsigned long now) {
     doorTarget = UNKNOWN;
 }
 
+String DoorStateString(int value) {
+    switch ((FuzzyBoolean)value) {
+        case KNOWN_FALSE:
+            return "closed";
+        case KNOWN_TRUE:
+            return "open";
+        default:
+            return "unknown";
+    }
+}
+
 int doorOpenTarget(String args) {
-    if (args == "true") {
-        publishDoorTarget(KNOWN_TRUE);
+    if (args == "open") {
+        doorTarget = KNOWN_TRUE;
         return 0;
-    } else if (args == "false") {
-        publishDoorTarget(KNOWN_FALSE);
+    } else if (args == "closed") {
+        doorTarget = KNOWN_FALSE;
         return 0;
     } else if (args == "toggle") {
         if (doorState != UNKNOWN) {
-            publishDoorTarget(!doorState);
+            doorTarget = (FuzzyBoolean)!doorState;
             return 0;
         }
         if (doorTarget != UNKNOWN) {
-            publishDoorTarget(!doorTarget);
+            doorTarget = (FuzzyBoolean)!doorTarget;
             return 0;
         }
 
@@ -186,5 +185,5 @@ void loop() {
 
     handleDoorToTarget(now);
 
-    strip_update(now);
+    stripPattern.drawUpdate();
 }
