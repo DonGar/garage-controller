@@ -5,16 +5,16 @@ CORE_ID ?= Garage
 default: compile
 
 compile:
-	spark compile .  --saveTo firmware.bin
+	particle compile .  --saveTo firmware.bin
 
 push:
-	spark flash ${CORE_ID} .
+	particle flash ${CORE_ID} .
 
 flash:
-	sudo spark flash --usb firmware.bin
+	sudo particle flash --usb firmware.bin
 
 wifi:
-	sudo spark setup wifi
+	sudo particle setup wifi
 
 clean:
 	rm firmware.bin
