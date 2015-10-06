@@ -1,2 +1,3 @@
-*.sublime-workspace
-spark.io/firmware.bin
+*.pyc
+.code
+firmware.bin
