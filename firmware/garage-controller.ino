@@ -73,9 +73,7 @@ void publishDoorState(int newState) {
 }
 
 int setStripPattern(String text) {
-  int result = stripPattern.setText(text);
-  Spark.publish("strip", stripPattern.getText(), 60, PRIVATE);
-  return result;
+  return stripPattern.setText(text);
 }
 
 void startDoorMotion(unsigned long now) {
@@ -185,5 +183,8 @@ void loop() {
 
     handleDoorToTarget(now);
 
-    stripPattern.drawUpdate();
+    if (stripPattern.drawUpdate()) {
+        // If the pattern was updated, publish the new one.
+        Spark.publish("strip", stripPattern.getText(), 60, PRIVATE);
+    }
 }
