@@ -1,5 +1,5 @@
 // This #include statement was automatically added by the Spark IDE.
-#include "spark-strip/spark-strip.h"
+#include "spark-strip.h"
 
 #define SIGN (Color{0x00, 0x5F, 0x5F, 0x5F})
 

@@ -7,7 +7,11 @@ CORE_ID ?= Garage
 default: compile
 
 firmware.bin: firmware/*
-	particle compile firmware  --saveTo firmware.bin
+	particle compile \
+		firmware/* \
+		particle-strip/firmware/*.h \
+		particle-strip/firmware/*.cpp \
+		--saveTo firmware.bin
 
 compile: firmware.bin
 
