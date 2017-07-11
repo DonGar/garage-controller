@@ -1,13 +1,13 @@
 
 # Id of device to push.
-CORE_ID ?= Garage
+CORE_ID ?= garage
 
 .PHONY: default compile push flash wifi clean update_libs
 
 default: compile
 
-firmware.bin: firmware/*
-	particle compile \
+firmware.bin: firmware/* particle-strip/firmware/*
+	particle compile core \
 		firmware/* \
 		particle-strip/firmware/*.h \
 		particle-strip/firmware/*.cpp \
